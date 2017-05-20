@@ -7,10 +7,16 @@
 
 typedef struct _agency 
 {
-    std::string agency_id;
-    std::string agency_name;
-    std::string agency_email;
+    std::string id;
+    std::string name;
+    std::string email;
 } Agency;
 
-extern int load_gtfs_system_data(std::string gtfs_data_folder, Agency &agency);
+struct missing_input_exception : public std::exception {
+   const char * what () const throw () {
+      return "Unable to locate necessary input file.";
+   }
+};
+
+extern bool load_gtfs_system_data(std::string gtfs_data_folder, Agency &agency); // Throws missing_input exception and unterminated_quote_exception
 

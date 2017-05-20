@@ -11,110 +11,82 @@
 //
 
 #include <iostream>
+#include <fstream>
 #include <exception>
+#include <map>
+#include <unordered_map>
+#include <errno.h>
+#include <string.h>
+// #include <filesystem>   File System is still experimental, at least in G++ 4.7.2
 #include "parse_gtfs.h"
+#include "parse_csv_line.h"
 using namespace std;
 
-//
-// Parsing CSV
-//
-// Need to handle use-cases like:
-//
-//     7694,110,"Peachtree St./""The Peach""",,3,,819FF7,
-//
-// Hate to reinvent the wheel, here, but there seem to be 15 different types of
-// wheel on StackOverflow, and I want one that works for GTFS's use case,
-// and I want to "do my own work".
-//
 
-enum quote_modes
+//
+// Goal 1: Use Maps to make it easy to see how fields in the CSV are exploited
+//
+// Goal 2 (time permitting): define a custom iterator that loops through CSV lines,
+//   thus localizing more of the line-by-line nature of the data
+//
+const bool load_csv_file(string folder, string filename, unordered_map<string, string> &result)
 {
-    unstarted,
-    started,
-    ended
-};
-
-struct unterminated_quote_exception : public exception {
-   const char * what () const throw () {
-      return "Invalid Line encountered in CSV: Unterminated quotes";
-   }
-};
- 
-vector<string> parse_quoted_csv(string input_line)
-{
-    vector<string> result;
-    string underConstruction;
-    enum quote_modes quote_mode { unstarted };
-    for ( auto ch : input_line ) {
-        switch ( ch ) {
-                
-        case '"':
-            //
-            // Begin and end quotes are consumed without
-            // being processed.
-            // 
-            if ( quote_mode == unstarted ) {
-                quote_mode = started;
-            }
-            else if ( quote_mode == started ) {
-                quote_mode = ended;
-            }
-            //
-            // In the case of a repeated double quote, insert one literal quote 
-            else if ( quote_mode == ended ) {
-                underConstruction.push_back(ch);
-                quote_mode = started;
-            }
-            break;
-
-        case ',':
-            if ( quote_mode == started ) {
-                underConstruction.push_back(ch);
-            }
-            else {
-                //
-                // Terminate current string.
-                //
-                result.push_back(underConstruction);
-                underConstruction.clear();
-                quote_mode = unstarted;
-            }
-            break;
-            
-        default:
-            underConstruction.push_back(ch);
-            break;
-        }
+//    string std:filesystem::path agency_file(gtfs_data_folder);
+//    agency_file /= "agency.txt";
+    string fullpathfilename(folder);
+    fullpathfilename.append("/").append(filename);
+    ifstream csv_file(fullpathfilename);
+    int linenum = 0;
+    string line;
+    if ( !csv_file.is_open() ) {
+        cerr << "Error opening file <" << fullpathfilename << ">: " << strerror(errno) << endl;
+        throw missing_input_exception();
     }
-    
-    //
-    // Handle erroneous input line with unterminated quotes
-    // More than likely, we have encountered a new dialect of CSV
-    //
-    if ( quote_mode == started ) {
-        throw unterminated_quote_exception();
-    }
-    
-    //
-    // Handle the last (possibly-empty) field, still under construction
-    //
-    result.push_back(underConstruction);
-    return result;
-}
 
-
-int load_gtfs_system_data(string gtfs_data_folder, Agency &agency)
-{
     try {
-        auto split_line = parse_quoted_csv(gtfs_data_folder);
-        for ( auto item : split_line ) {
-            cout << item << endl;
+        //
+        // Read CSV header line
+        //
+        if ( getline(csv_file, line) ) {
+            linenum++;
+            auto field_names = parse_quoted_csv(line);
+            while ( getline(csv_file, line) ) {
+                linenum++;
+                auto split_line = parse_quoted_csv(line);
+                auto field_name = field_names.begin();
+                for ( auto item : split_line ) {
+                    result[*field_name++] = item;
+                }
+            }
         }
     }
     catch ( const unterminated_quote_exception &uqe ) {
-        cerr << "Error in line 1, unterminated quote: " << gtfs_data_folder << endl;
+        cerr << "Error in file <" << fullpathfilename << ">, line " << linenum << ", unterminated quote: " << line << endl;
         throw uqe;
     }
+
+    return true;
+}
+
+bool load_gtfs_system_data(string gtfs_data_folder, Agency &agency)
+{
+    unordered_map<string, string> agency_values;
+    bool rc = load_csv_file(gtfs_data_folder, "agency.txt", agency_values);
+
+#if 0
+    cout << "Map values: " << endl;
+    for ( auto mypair: agency_values ) {
+        cout << mypair.first << ": " << mypair.second << endl;
+    }
+#endif
+
+#define find_with_default(hmap, key, defvalue) ( hmap.find(key) != hmap.end() ? hmap[key] : defvalue )
             
+    agency.id = find_with_default(agency_values, "agency_id", "MISSING");
+    agency.name = find_with_default(agency_values, "agency_name", "MISSING");
+    agency.email = find_with_default(agency_values, "agency_email", "Unspecified");
+
+    return rc;
+        
 //, Map<Route> routes, Map <Stop> stops, Map<Stop_Time> Stops)
 }
