@@ -25,6 +25,7 @@ int main(int argc, char **argv)
         {
             {"timebuff", required_argument, 0, 't'},
             {"routebuff", required_argument, 0, 'r'},
+            {"verbose", no_argument, 0, 'v'},
             {0, 0, 0, 0}
         };
 
@@ -36,8 +37,9 @@ int main(int argc, char **argv)
     std::string time_of_day;
     char *remainder;
     std::string gtfs_dir;
+    bool verbose = false;
 
-    while ((opt = getopt_long(argc, argv, "r:t:",
+    while ((opt = getopt_long(argc, argv, "r:t:v",
                               gtfs_route_options, &first_mandatory_option)) != -1) {
         switch(opt) {
         case 'r':
@@ -46,6 +48,10 @@ int main(int argc, char **argv)
             
         case 't':
             time_buffer = strtod(optarg, &remainder);
+            break;
+
+        case 'v':
+            verbose = true;
             break;
         }
     }
@@ -74,15 +80,39 @@ int main(int argc, char **argv)
     std::cout << "  Longest delay without risking connection: " << time_buffer << " minutes." << std::endl;
 
     
-    Agency agency;
+    std::vector<Agency> agencies;
+    std::vector<Route> routes;
+    std::vector<Stop> stops;
+    std::vector<Stop_Time> stop_times;
+    std::vector<Trip> trips;
     try {
-        load_gtfs_system_data(gtfs_dir, agency);
-        std::cout << std::endl << "OUTPUTS: " << std::endl;
-        std::cout << "  GTFS System Id:    " << agency.id << std::endl;
-        std::cout << "  GTFS System Name:  " << agency.name << std::endl;
-        std::cout << "  GTFS System Email: " << agency.email << std::endl;
+        load_gtfs_system_data(gtfs_dir, agencies, routes, stops, stop_times, trips);
     }
     catch ( const std::exception &e ) {
         std::cerr << "Application failed with Exception: " << e.what() << std::endl;
+        return -5;
+    }
+
+    if ( verbose ) {
+        std::cout << std::endl << "AGENCY(IES): " << std::endl;
+        for ( auto agency: agencies ) {
+            std::cout << "  GTFS System ID:    " << agency.id << std::endl;
+            std::cout << "  GTFS System Name:  " << agency.name << std::endl;
+            std::cout << "  GTFS System Email: " << agency.email << std::endl;
+        }
+        std::cout << std::endl << "ROUTES: " << std::endl;
+        for ( auto route: routes ) {
+            std::cout << "  Route ID:    " << route.id << std::endl;
+            std::cout << "  Short Name:  " << route.short_name << std::endl;
+            std::cout << "  Long Name:   " << route.long_name << std::endl;
+            std::cout << "  Description: " << route.desc << std::endl;
+        }
+        std::cout << std::endl << "STOPS: " << std::endl;
+        for ( auto stop: stops ) {
+            std::cout << "  Stop ID:       " << stop.id << std::endl;
+            std::cout << "  Stop Code:     " << stop.code << std::endl;
+            std::cout << "  Stop Name:     " << stop.name << std::endl;
+            std::cout << "  Stop Location: (" << stop.lat << ", " << stop.lon << ")." << std::endl;
+        }
     }
 }

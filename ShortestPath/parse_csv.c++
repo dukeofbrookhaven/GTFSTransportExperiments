@@ -10,7 +10,11 @@
 // and I want to "do my own work".
 //
 
-#include "parse_csv_line.h"
+#include <iostream>
+#include <fstream>
+#include <errno.h>
+#include <string.h>
+#include "parse_csv.h"
 using namespace std;
 
 enum quote_modes
@@ -20,7 +24,7 @@ enum quote_modes
     ended
 };
 
-vector<string> parse_quoted_csv(string input_line)
+vector<string> parse_quoted_csv_line(string input_line)
 {
     vector<string> result;
     string underConstruction;
@@ -63,6 +67,15 @@ vector<string> parse_quoted_csv(string input_line)
                 quote_mode = unstarted;
             }
             break;
+
+        case ' ':
+            //
+            // Ignore leading spaces in fields, found in Australian data
+            //
+            if ( quote_mode != unstarted || underConstruction.length() > 0 ) {
+                underConstruction.push_back(ch);
+            }
+            break;
             
         default:
             //
@@ -86,4 +99,49 @@ vector<string> parse_quoted_csv(string input_line)
     //
     result.push_back(underConstruction);
     return result;
+}
+
+//
+// Goal 1: Use Maps to make it easy to see how fields in the CSV are exploited
+//
+// Goal 2 (time permitting): define a custom iterator that loops through CSV lines,
+//   thus localizing more of the line-by-line nature of the data
+//
+const bool parse_quoted_csv_file(string folder, string filename, vector<unordered_map<string, string>> &result)
+{
+    string fullpathfilename(folder);
+    fullpathfilename.append("/").append(filename);
+    ifstream csv_file(fullpathfilename);
+    int linenum = 0;
+    string line;
+    if ( !csv_file.is_open() ) {
+        cerr << "Error opening file <" << fullpathfilename << ">: " << strerror(errno) << endl;
+        throw missing_file_exception();
+    }
+
+    try {
+        //
+        // Read CSV header line
+        //
+        if ( getline(csv_file, line) ) {
+            linenum++;
+            auto field_names = parse_quoted_csv_line(line);
+            while ( getline(csv_file, line) ) {
+                linenum++;
+                unordered_map<string, string> record;
+                auto split_line = parse_quoted_csv_line(line);
+                auto field_name = field_names.begin();
+                for ( auto item : split_line ) {
+                    record[*field_name++] = item;
+                }
+                result.push_back(record);
+            }
+        }
+    }
+    catch ( const unterminated_quote_exception &uqe ) {
+        cerr << "Error in file <" << fullpathfilename << ">, line " << linenum << ", unterminated quote: " << line << endl;
+        throw uqe;
+    }
+
+    return true;
 }
