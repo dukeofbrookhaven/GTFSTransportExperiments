@@ -1,6 +1,6 @@
 # Project Title
 
-Transportation Examples
+GTFS Transportation Experimental Code
 
 ## Getting Started
 
@@ -8,30 +8,35 @@ These are some relatively small (and mostly harmless) programs to exercise vario
 
 ShortestPath is a program written in C++ to compute the optimal transportation route from point A to point B using a particular transportation system.  This reads data that complies with the General Transit Feed Specification (GTFS) and uses some STL algorithms to compute the shortest route, using parallelization or even vectorization (depending upon your taste for overkill).
 
-This started as a weekend bench project.  All ridiculous shortcuts are the sole responsibility of this author.
+This started as a weekend bench project, and may reflect some serious shortcuts in the name of expediency, e.g. no Makefiles or serious build management
 
 To build this program, run the following command:
 
-...
-gcc parse_gtfs.C optimize_route.C main.C -o gtfs_route.exe
+```
+g++ parse_gtfs.c++ optimize_route.c++ main.c++ -o gtfs_route.exe
+```
+
+or
+
+```
+compile.bash
+```
 
 To run this program,
 
-...
+```
 gtfs_route [--timebuff minutes] [--routebuff feet] <gtfsdir> <source_lat> <source_lon> <timeofday> <dest_lat> <dest_lon>
+```
 
 where:
 
-...
-gtfsdir is folder containing location of a transit system data (see Prerequisites)
-source_lat, source_lon describes the starting point (in decimal degrees latitude and longitude)
-timeofday is the time of day
-dest_lat, dest_lon describes your destination point (in decimal degrees latitude and longitude)
 
-...
-timebuff provides a buffer in case a given route is behind schedule.  The default is 15.0 minutes, so as long as one cycle is not running later, you should reach your destination within the predicted time.
-
-The route buffer identifies the maximum tolerable distance from your starting location to the transport stop.  The default is 1000 feet
+* gtfsdir is folder containing location of a transit system data (see Prerequisites)
+* source_lat, source_lon describes the starting point (in decimal degrees latitude and longitude)
+* timeofday is the time of day in hh:mm format (24-hour day)
+* dest_lat, dest_lon describes your destination point (in decimal degrees latitude and longitude)
+* timebuff provides a buffer in case a given route is behind schedule.  The default is 15.0 minutes, so as long as one cycle is not running later, you should reach your destination within the predicted time.
+* routebuff identifies the greatest distanct you would consider walking to reach a given transport stop.  The default is 1000 feet
 
 ### Prerequisites
 
@@ -45,10 +50,8 @@ This program was tested on the Atlanta (MARTA) transport data, and a couple of o
 
 ## Authors
 
-* **Miles Duke** - *Initial work* - [TransportRamblings](https://github.com/TransportRamblings)
-
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
+* **Miles Duke** - *Initial work* - [GTFSTransportExperiments](https://github.com/GTFSTransportExperiments)
 
 ## License
 
-This project is copyright 2017.  Please contact the author for redistribution.
+This experimental project is copyright 2017, with no real intention to distribute.  If you see an actual useful application, I might be willing to turn IP rights over to an appropriate community.
