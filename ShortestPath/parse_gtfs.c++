@@ -122,7 +122,8 @@ bool load_gtfs_system_data(string gtfs_data_folder,
     for ( auto stop_time_fields : stop_time_table ) {
         Stop_Time stop_time;
         stop_time.trip = find_required(stop_time_fields, "trip_id");
-        stop_time.depart_time = find_with_default(stop_time_fields, "departure_time", "Unspecified");
+        stop_time.arrive = find_with_default(stop_time_fields, "arrival_time", "Unspecified");
+        stop_time.depart = find_with_default(stop_time_fields, "departure_time", "Unspecified");
         stop_time.stop = find_required(stop_time_fields, "stop_id");
         stop_time.sequence = strtol(find_with_default(stop_time_fields, "stop_sequence", "0").c_str(), nullptr, 10);
         stop_times.push_back(stop_time);

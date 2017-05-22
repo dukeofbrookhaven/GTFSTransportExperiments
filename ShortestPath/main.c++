@@ -4,6 +4,7 @@
 #include <string>
 #include <exception>
 #include "parse_gtfs.h"
+#include "optimize_route.h"
 
 //
 // Overarching priorities:
@@ -115,4 +116,18 @@ int main(int argc, char **argv)
             std::cout << "  Stop Location: (" << stop.lat << ", " << stop.lon << ")." << std::endl;
         }
     }
+
+
+    try {
+        std::vector<Stop> source_stops;
+        int num_source = find_trips(stops, stop_times, trips, start_lat, start_lon, route_buffer, time_of_day);
+
+        std::vector<Stop> dest_stops;
+        int num_dest = find_trips(stops, stop_times, trips, dest_lat, dest_lon, route_buffer, time_of_day);
+    }
+    catch ( const std::exception &e ) {
+        std::cerr << "Application failed with Exception: " << e.what() << std::endl;
+        return -5;
+    }
+
 }

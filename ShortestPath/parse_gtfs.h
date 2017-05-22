@@ -2,6 +2,8 @@
 // PODS
 //
 
+#pragma once
+
 #include <vector>
 #include <string>
 
@@ -32,7 +34,8 @@ typedef struct _stop
 typedef struct _stop_time 
 {
     std::string trip;
-    std::string depart_time;
+    std::string arrive;
+    std::string depart;
     std::string stop;
     long sequence;
 } Stop_Time;

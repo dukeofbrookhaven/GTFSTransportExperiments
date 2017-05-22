@@ -6,7 +6,7 @@ GTFS Transportation Experimental Code
 
 These are some relatively small (and mostly harmless) programs to exercise various programming concepts and systems.
 
-ShortestPath is a program written in C++ to compute the optimal transportation route from point A to point B using a particular transportation system.  This reads data that complies with the General Transit Feed Specification (GTFS) and uses some STL algorithms to compute the shortest route, potentially using parallelization or even vectorization (depending upon your taste for overkill).
+ShortestPath is a program written in bare bones C++ (G++ 11, no database, no boost) to compute the optimal transportation route from point A to point B using a particular transportation system.  This reads data that complies with the General Transit Feed Specification (GTFS) and uses some STL algorithms and other conventions provided by C++ 11.
 
 This started as a weekend bench project, and may reflect some serious shortcuts in the name of expediency, e.g. no Makefiles or serious build management.
 
@@ -25,18 +25,23 @@ compile.bash
 To run this program,
 
 ```
-gtfs_route [--timebuff minutes] [--routebuff feet] <gtfsdir> <source_lat> <source_lon> <timeofday> <dest_lat> <dest_lon>
+gtfs_route [--timebuff minutes] [--routebuff feet] [--verbose] <gtfsdir> <source_lat> <source_lon> <timeofday> <dest_lat> <dest_lon>
 ```
 
 where:
 
+* *gtfsdir* is folder containing transit system data (see Prerequisites)
+* *source_lat*, *source_lon* describes the starting point (in decimal degrees latitude and longitude)
+* *timeofday* is the time of day in hh:mm format (24-hour day)
+* *dest_lat*, *dest_lon* describes your destination point (in decimal degrees latitude and longitude)
+* *timebuff* provides a buffer in case a given route is behind schedule.  The default is 15.0 minutes, so as long as one cycle is not running later, you should reach your destination within the predicted time.
+* *routebuff* identifies the greatest distanct you would consider walking to reach a given transport stop.  The default is 1000 feet
+* *verbose* provides some verbose information (e.g. content of certain system tables) for tracing
 
-* gtfsdir is folder containing transit system data (see Prerequisites)
-* source_lat, source_lon describes the starting point (in decimal degrees latitude and longitude)
-* timeofday is the time of day in hh:mm format (24-hour day)
-* dest_lat, dest_lon describes your destination point (in decimal degrees latitude and longitude)
-* timebuff provides a buffer in case a given route is behind schedule.  The default is 15.0 minutes, so as long as one cycle is not running later, you should reach your destination within the predicted time.
-* routebuff identifies the greatest distanct you would consider walking to reach a given transport stop.  The default is 1000 feet
+There are 2 bash scripts with data points that can exercise this program
+
+* *mariposaCounty.bash* - Uses the 'yosemite-ca-us' transit system data
+* *varsityToCentennial.bash* - Uses the MARTA transit system data
 
 ### Prerequisites
 
