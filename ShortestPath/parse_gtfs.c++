@@ -43,7 +43,7 @@ string find_required(unordered_map<string, string> &record, string key)
 bool load_gtfs_system_data(string gtfs_data_folder,
                            vector<Agency> &agencies,
                            vector<Route> &routes,
-                           vector<Stop> &stops,
+                           unordered_map<string, Stop> &stops,
                            vector<Stop_Time> &stop_times,
                            vector<Trip> &trips)
 {
@@ -106,7 +106,7 @@ bool load_gtfs_system_data(string gtfs_data_folder,
         stop.name = find_with_default(stop_fields, "stop_name", "Unspecified");
         stop.lat = strtod(find_required(stop_fields, "stop_lat").c_str(), nullptr);
         stop.lon = strtod(find_required(stop_fields, "stop_lon").c_str(), nullptr);
-        stops.push_back(stop);
+        stops[stop.id] = stop;
     }
     end = chrono::system_clock::now();
     process_time = end - start;

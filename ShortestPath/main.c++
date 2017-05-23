@@ -34,6 +34,9 @@ int main(int argc, char **argv)
     int opt;
     double time_buffer { 15.0L };
     double route_buffer { 1000.0L };
+    int longest_initial_wait { 120 };
+    int longest_acceptable_time { 960 };
+        
     double start_lat, start_lon, dest_lat, dest_lon;
     std::string time_of_day;
     char *remainder;
@@ -83,7 +86,7 @@ int main(int argc, char **argv)
     
     std::vector<Agency> agencies;
     std::vector<Route> routes;
-    std::vector<Stop> stops;
+    std::unordered_map<std::string, Stop> stops;
     std::vector<Stop_Time> stop_times;
     std::vector<Trip> trips;
     try {
@@ -109,7 +112,8 @@ int main(int argc, char **argv)
             std::cout << "  Description: " << route.desc << std::endl;
         }
         std::cout << std::endl << "STOPS: " << std::endl;
-        for ( auto stop: stops ) {
+        for ( auto stop_pair: stops ) {
+            auto stop = stop_pair.second;
             std::cout << "  Stop ID:       " << stop.id << std::endl;
             std::cout << "  Stop Code:     " << stop.code << std::endl;
             std::cout << "  Stop Name:     " << stop.name << std::endl;
@@ -121,7 +125,8 @@ int main(int argc, char **argv)
     try {
         int num_paths = optimize_paths(trips, stops, stop_times, routes,
                                        start_lat, start_lon, dest_lat, dest_lon,
-                                       time_of_day, route_buffer, time_buffer);
+                                       time_of_day, route_buffer, time_buffer,
+                                       longest_initial_wait, longest_acceptable_time);
         cout << num_paths << " paths identified." << endl;
     }
     catch ( const std::exception &e ) {

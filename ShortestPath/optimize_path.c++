@@ -184,30 +184,52 @@ long difftime_in_minutes(string a, string b)
 //
 // Find stops within distance of a target point
 //
-int add_stops_within_distance(vector<Stop> &stops, double lat, double lon, double distance,
-                               /* in/out */ vector<Stop> &stops_within_distance)
+int add_stops_within_distance(unordered_map<string, Stop> &stops, double lat, double lon, double distance,
+                               /* in/out */ set<string> &stops_within_distance)
 {
     int count_before = stops_within_distance.size();
+
     //
-    // My first C++ lambda
+    // Accumulate a list of unique stops within a certain distance of
+    // a point.
     //
-    copy_if(stops.begin(), stops.end(), back_inserter(stops_within_distance),
-            [=](Stop &s) { return dist_feet(lat,lon,s.lat,s.lon) < distance; });
+    // Comparing the various incantations of for_each, and the
+    // exercise of capturing the correct type of references for the
+    // lambda, I have to say the code with range-based for is much
+    // more readable.  The payoff might be there for other algorithms,
+    // or for parallelized algorithms in C++ 17.
+    //
+#if 0
+    for_each(stops.begin(), stops.end(), [&stops_within_distance,lat,lon,distance](const pair <const string, Stop> &stop_key_value) {
+    //for_each(stops.begin(), stops.end(), [&stops_within_distance,lat,lon,distance](const std::unordered_map<string,Stop>::value_type &stop_key_value) {
+            if ( dist_feet(lat, lon, stop_key_value.second.lat, stop_key_value.second.lon) < distance ) {
+                stops_within_distance.insert(stop_key_value.second.id);
+            }
+        });
+#else
+    // for ( const pair <const string, Stop> stop_key_value : stops ) {
+    for (const auto stop_key_value: stops) {
+        if ( dist_feet(lat, lon, stop_key_value.second.lat, stop_key_value.second.lon) < distance ) {
+            stops_within_distance.insert(stop_key_value.second.id);
+        }
+    }
+#endif
+            
 
     return stops_within_distance.size() - count_before;
 }
 
 int add_trips_containing_stop(vector<Trip> &trips, vector<Stop_Time> &stop_times,
-                              const Stop &stop, const string *after_time_of_day,
+                              const string &stop_id, const string *after_time_of_day, long time_box,
                               /* in/out */ set<string> &trips_containing_stop)
 {
     int count_before = trips_containing_stop.size();
     struct tm tm;
     
     int trips_later_today = 0;
-    cout << "Searching for trips that hit stop " << stop.id << ":" << endl;
+    cout << "Searching for trips that hit stop " << stop_id << ":" << endl;
     for ( auto stop_time: stop_times ) {
-        if ( stop.id == stop_time.stop ) {
+        if ( stop_id == stop_time.stop ) {
             //
             // Validate arrival time.  Must be valid time stamp, and within
             // appropriate range of optional time-of-day constraint
@@ -215,11 +237,11 @@ int add_trips_containing_stop(vector<Trip> &trips, vector<Stop_Time> &stop_times
             try {
                 //
                 // Skip trips that have already happened today, and
-                // those more than 3 hours away
+                // those arriving outside the specified time box
                 //
                 if ( after_time_of_day ) {
                     int minutes_away = difftime_in_minutes(*after_time_of_day, stop_time.arrive);
-                    if ( minutes_away < 0 || minutes_away > 180 ) {
+                    if ( minutes_away < 0 || minutes_away > time_box ) {
                         continue;
                     }
                 }
@@ -256,46 +278,50 @@ int add_trips_containing_stop(vector<Trip> &trips, vector<Stop_Time> &stop_times
     return trips_containing_stop.size() - count_before;
 }
 
-int optimize_paths(vector<Trip> &trips, vector<Stop> &stops,
+int optimize_paths(vector<Trip> &trips, unordered_map<string, Stop> &stops,
                    vector<Stop_Time> &stop_times, vector<Route> &routes,
                    double start_lat, double start_lon, double dest_lat, double dest_lon,
-                   string start_time_of_day, double route_buffer, double time_buffer)
+                   string start_time_of_day, double route_buffer, double time_buffer,
+                   int longest_initial_wait, int longest_acceptable_time)
 {
-    std::chrono::time_point<chrono::system_clock> start, end;
+    chrono::time_point<chrono::system_clock> start, end;
     chrono::duration<double> process_time;
 
     start = chrono::system_clock::now();
 
 
-    std::vector<Stop> source_stops;
+    set<string> source_stops;
     int num_source = add_stops_within_distance(stops, start_lat, start_lon, route_buffer, source_stops);
     cout << "Found " << num_source << " stops within " << route_buffer << " feet of starting point." << endl;
 
     //
     // Generate list of unique trips that stop near the source
-    // position within the timebox
+    // position within the timebox.  For the lambda, specify the
+    // capture explicitly to ensure the large tables are references
+    // while operational parameters are captured by value.  G++
+    // probably does "the right thing", but compilers tend to help
+    // those who help themselves.
     // 
-    std::set<string> source_trips;
+    set<string> source_trips;
     for_each(source_stops.begin(), source_stops.end(),
-             [&trips, &stop_times, start_time_of_day, &source_trips](const Stop &stop) {
-                 add_trips_containing_stop(trips, stop_times, stop, &start_time_of_day, source_trips);
+             [&trips, &stop_times, start_time_of_day, longest_initial_wait, &source_trips](const string &stop_id) {
+                 add_trips_containing_stop(trips, stop_times, stop_id, &start_time_of_day, longest_initial_wait, source_trips);
              } );
     cout << "Found " << source_trips.size() << " unique trips that stop within " << route_buffer << " feet of destination." << endl;
 
-    std::vector<Stop> dest_stops;
+    set<string> dest_stops;
     int num_dest = add_stops_within_distance(stops, dest_lat, dest_lon, route_buffer, dest_stops);
     cout << "Found " << num_dest << " stops within " << route_buffer << " feet of destination." << endl << endl;
 
     //
     // Generate list of unique trips that stop near the destination
-    // position at any time of day.  We must case a wider net, since
-    // we don't know how far from the destination we might need to
-    // step back.
+    // position.  Use a wider timebox, since we don't know how long
+    // various connections might take to get here.
     // 
-    std::set<string> dest_trips;
+    set<string> dest_trips;
     for_each(dest_stops.begin(), dest_stops.end(),
-             [&trips, &stop_times, &dest_trips](const Stop &stop) {
-                 add_trips_containing_stop(trips, stop_times, stop, nullptr, dest_trips);
+             [&trips, &stop_times, start_time_of_day, longest_acceptable_time, &dest_trips](const string &stop_id) {
+                 add_trips_containing_stop(trips, stop_times, stop_id, &start_time_of_day, longest_acceptable_time, dest_trips);
              } );
     cout << "Found " << dest_trips.size() << " unique trips that stop within " << route_buffer << " feet of destination." << endl;
 

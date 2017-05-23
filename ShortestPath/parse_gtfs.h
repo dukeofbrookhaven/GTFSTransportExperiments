@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 typedef struct _agency 
 {
@@ -57,7 +58,7 @@ struct missing_value_exception : public std::exception {
 extern bool load_gtfs_system_data(std::string gtfs_data_folder,
                                   std::vector<Agency> &agencies,
                                   std::vector<Route> &routes,
-                                  std::vector<Stop> &stops,
+                                  std::unordered_map<std::string, Stop> &stops,
                                   std::vector<Stop_Time> &stop_times,
                                   std::vector<Trip> &trips
                                   ); // Throws missing_file_exception, missing_value_exception, and unterminated_quote_exception
