@@ -4,7 +4,7 @@
 #include <string>
 #include <exception>
 #include "parse_gtfs.h"
-#include "optimize_route.h"
+#include "optimize_path.h"
 
 //
 // Overarching priorities:
@@ -119,11 +119,10 @@ int main(int argc, char **argv)
 
 
     try {
-        std::vector<Stop> source_stops;
-        int num_source = find_trips(stops, stop_times, trips, start_lat, start_lon, route_buffer, time_of_day);
-
-        std::vector<Stop> dest_stops;
-        int num_dest = find_trips(stops, stop_times, trips, dest_lat, dest_lon, route_buffer, time_of_day);
+        int num_paths = optimize_paths(trips, stops, stop_times, routes,
+                                       start_lat, start_lon, dest_lat, dest_lon,
+                                       time_of_day, route_buffer, time_buffer);
+        cout << num_paths << " paths identified." << endl;
     }
     catch ( const std::exception &e ) {
         std::cerr << "Application failed with Exception: " << e.what() << std::endl;
