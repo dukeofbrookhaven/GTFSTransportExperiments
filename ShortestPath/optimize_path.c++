@@ -5,6 +5,7 @@
 #include <set>
 #include <math.h>
 #include <ctime>
+#include <iterator>
 #include <algorithm>
 #include <chrono>
 #include "parse_gtfs.h"
@@ -278,22 +279,13 @@ int add_trips_containing_stop(vector<Trip> &trips, vector<Stop_Time> &stop_times
     return trips_containing_stop.size() - count_before;
 }
 
-int optimize_paths(vector<Trip> &trips, unordered_map<string, Stop> &stops,
-                   vector<Stop_Time> &stop_times, vector<Route> &routes,
-                   double start_lat, double start_lon, double dest_lat, double dest_lon,
-                   string start_time_of_day, double route_buffer, double time_buffer,
-                   int longest_initial_wait, int longest_acceptable_time)
+int expand_network_from(vector<Trip> &trips, unordered_map<string, Stop> &stops,
+                        vector<Stop_Time> &stop_times, double lat, double lon, int iterations,
+                        string start_time_of_day, long time_box, long recursive_time_box,
+                        double route_buffer, double time_buffer,
+                        /* in/out */ set<string> &stop_ids, /* in/out */ set<string> &trip_ids,
+                        /* in/out */ set<string> &expanded_stops, /* in/out */ set<string> &expanded_trips)
 {
-    chrono::time_point<chrono::system_clock> start, end;
-    chrono::duration<double> process_time;
-
-    start = chrono::system_clock::now();
-
-
-    set<string> source_stops;
-    int num_source = add_stops_within_distance(stops, start_lat, start_lon, route_buffer, source_stops);
-    cout << "Found " << num_source << " stops within " << route_buffer << " feet of starting point." << endl;
-
     //
     // Generate list of unique trips that stop near the source
     // position within the timebox.  For the lambda, specify the
@@ -302,32 +294,161 @@ int optimize_paths(vector<Trip> &trips, unordered_map<string, Stop> &stops,
     // probably does "the right thing", but compilers tend to help
     // those who help themselves.
     // 
-    set<string> source_trips;
-    for_each(source_stops.begin(), source_stops.end(),
-             [&trips, &stop_times, start_time_of_day, longest_initial_wait, &source_trips](const string &stop_id) {
-                 add_trips_containing_stop(trips, stop_times, stop_id, &start_time_of_day, longest_initial_wait, source_trips);
-             } );
-    cout << "Found " << source_trips.size() << " unique trips that stop within " << route_buffer << " feet of destination." << endl;
-
-    set<string> dest_stops;
-    int num_dest = add_stops_within_distance(stops, dest_lat, dest_lon, route_buffer, dest_stops);
-    cout << "Found " << num_dest << " stops within " << route_buffer << " feet of destination." << endl << endl;
+    int num_new_stops = add_stops_within_distance(stops, lat, lon, route_buffer, stop_ids);
+    if ( num_new_stops > 0 ) {
+        cout << "Found " << num_new_stops << " new stops within " << route_buffer << " feet of (" << lat << ", " << lon << ")." << endl;
+    }
 
     //
-    // Generate list of unique trips that stop near the destination
-    // position.  Use a wider timebox, since we don't know how long
-    // various connections might take to get here.
-    // 
-    set<string> dest_trips;
-    for_each(dest_stops.begin(), dest_stops.end(),
-             [&trips, &stop_times, start_time_of_day, longest_acceptable_time, &dest_trips](const string &stop_id) {
-                 add_trips_containing_stop(trips, stop_times, stop_id, &start_time_of_day, longest_acceptable_time, dest_trips);
-             } );
-    cout << "Found " << dest_trips.size() << " unique trips that stop within " << route_buffer << " feet of destination." << endl;
+    // On the last iteration, we only record new stops.
+    // So, for instance, with two iterations, we go:
+    //    start point -> a few stops -> a few more trips ->
+    //             -> more stops -> even more trips ->
+    //             -> final list of stops
+    //
+    int num_new_trips = 0;
+    if ( --iterations > 0 ) {
+        int num_trips_before = trip_ids.size();
+        //
+        // Last lambda standing
+        //
+        for_each(stop_ids.begin(), stop_ids.end(),
+                 [&expanded_stops, &trips, &stop_times, start_time_of_day, time_box, &trip_ids](const string &stop_id) {
+                     auto insert_result = expanded_stops.insert(stop_id);
+                     if ( insert_result.second ) {
+                         add_trips_containing_stop(trips, stop_times, stop_id, &start_time_of_day, time_box, trip_ids);
+                     }
+                 });
+        num_new_trips = trip_ids.size() - num_trips_before;
+        cout << "Found " << num_new_trips << " new trips that hit one of those stops " << route_buffer << " feet of destination." << endl;
+    }
+
+    //
+    // Having found all of the stops and trips that intersect a
+    // certain point (1st iteration), we might want to expand further
+    // -- recursively seeking additional trips and stops that
+    // intersect stops on newly-discovered trips.
+    //
+    // We could keep doing this until we found every possible
+    // connecting trip, but the iteration count (and the 3-hub rule)
+    // intentionally try to narrow down the field.
+    //
+
+    //
+    // Do not recurse further if we are on the last iteration, or if we
+    // found no new data on this iteration
+    //
+    if ( (num_new_trips == 0 && num_new_stops == 0) || iterations == 0 )
+        return num_new_trips;
+
+    for ( const auto trip_id: trip_ids ) {
+        //
+        // "Insert" trip id into the list of trips we've already expanded
+        // If the insert fails, then we don't need to revisit this trip
+        //
+        auto insert_result = expanded_trips.insert(trip_id);
+        if ( insert_result.second ) {
+            //
+            // Find all stops related to this trip (using stop_times
+            // list as a guide) and expand the network recursively
+            // using the location of those stops
+            //
+            for ( const auto stop_time: stop_times ) {
+                if ( stop_time.trip == trip_id ) {
+                    const auto stop_key_value = stops.find(stop_time.stop);
+                    if ( stop_key_value == stops.end() ) {
+                        cerr << "UNEXPECTED REFERENCE to non-existent stop " << stop_time.stop << " in trip " << trip_id << ". Cannot resolve this part of network further." << endl;
+                    }
+                    else {
+                        expand_network_from(trips, stops, stop_times,
+                                            stop_key_value->second.lat, stop_key_value->second.lon, iterations,
+                                            start_time_of_day, recursive_time_box, recursive_time_box, route_buffer, time_buffer,
+                                            stop_ids, trip_ids, expanded_stops, expanded_trips);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+int optimize_paths(vector<Trip> &trips, unordered_map<string, Stop> &stops,
+                   vector<Stop_Time> &stop_times, vector<Route> &routes,
+                   double start_lat, double start_lon, double dest_lat, double dest_lon,
+                   string start_time_of_day, double route_buffer, double time_buffer,
+                   int longest_initial_wait, int longest_acceptable_time)
+{
+    chrono::time_point<chrono::system_clock> start, interm, end;
+    chrono::duration<double> process_time;
+
+    start = chrono::system_clock::now();
+
+    //
+    // Create a network of trips and stops within distance of start and end points.
+    // To make a successful connection, at least one stop in the source network
+    // will be in walking distance of a stop in the destination network.
+    //
+    set<string> source_stop_ids;   // Unique Stop IDs within source network
+    set<string> source_trip_ids;   // Unique Trip IDs within source network
+    set<string> expanded_source_stops;  // Stops we have already "processed" to expand the network
+    set<string> expanded_source_trips;  // Trips we have already "processed" to expand the network
+
+    //
+    // From each candidate stop, build a network of trips and stops
+    // radiating outward, trying to stop when we hit a major artery.
+    //
+    // The criteria for hitting a major artery is when we follow a
+    // trip, and discover that we've added a large number of
+    // intersecting trips, or that "enough" of the stops have added
+    // multiple intersecting trips.  Some adjustments (or a better
+    // method of detection) may be in order.
+    //
+    expand_network_from(trips, stops, stop_times, start_lat, start_lon, 2,
+                        start_time_of_day, longest_initial_wait, longest_acceptable_time,
+                        route_buffer, time_buffer, source_stop_ids, source_trip_ids,
+                        expanded_source_stops, expanded_source_trips);
+
+    interm = end = chrono::system_clock::now();
+    process_time = end - start;
+    cout << "Source network (" << source_stop_ids.size() << " stops on " << source_trip_ids.size() << " trips) expansion took " << process_time.count() << " seconds." << endl;
+
+    set<string> dest_stop_ids;   // Unique Stop IDs within destination network
+    set<string> dest_trip_ids;   // Unique Trip IDs within destination network
+    set<string> expanded_dest_stops;  // Stops we have already "processed" to expand the network
+    set<string> expanded_dest_trips;  // Trips we have already "processed" to expand the network
+
+    expand_network_from(trips, stops, stop_times, dest_lat, dest_lon, 2,
+                        start_time_of_day, longest_acceptable_time, longest_acceptable_time,
+                        route_buffer, time_buffer, dest_stop_ids, dest_trip_ids,
+                        expanded_dest_stops, expanded_dest_trips);
+
+    end = chrono::system_clock::now();
+    process_time = end - interm;
+    cout << "Destination network (" << dest_stop_ids.size() << " stops on " << dest_trip_ids.size() << " trips) expansion took " << process_time.count() << " seconds." << endl;
+
+    //
+    // Now for the payoff.  If stops exist in both source and dest
+    // networks, then we can construct a reasonable route.  This is
+    // currently left as an exercise for the reader (front-end work ;)
+    //
+    vector<string> intersecting_stops;
+    set_intersection(source_stop_ids.begin(), source_stop_ids.end(),
+                     dest_stop_ids.begin(), dest_stop_ids.end(),
+                     back_inserter(intersecting_stops));
+
+    int crux_points = intersecting_stops.size();
+    if ( crux_points > 0 ) {
+        cout << "Located " << crux_points << " transfer points from source to destination network:" << endl;
+        for ( const string stop_id: intersecting_stops ) {
+            const auto stop = stops[stop_id];
+            cout << "  Stop " << stop.name << " (id " << stop_id << ")." << endl;
+        }
+    }
 
     end = chrono::system_clock::now();
     process_time = end - start;
-    cout << "Path computation took " << process_time.count() << " seconds." << endl;
+    cout << "Entire path computation process took " << process_time.count() << " seconds." << endl;
 
-    return dest_trips.size();  // Not accurate, yet
+    return crux_points;  // Still not accurate (but closer)
 }
